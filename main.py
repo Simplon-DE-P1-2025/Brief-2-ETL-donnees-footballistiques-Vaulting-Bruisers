@@ -223,6 +223,49 @@ class WorldCupExtractor:
     
     def extract_source2(self, filename="WorldCupMatches2014.csv"):
         """
+        Extract WorldCupMatches2014.csv avec correction des problèmes d'encoding
+        """
+        logger.info(f"📥 Extraction de {filename}...")
+        try:
+            filepath = self.data_dir / filename
+            
+            # Option 1: Lire avec différentes stratégies
+            try:
+                # Essayer avec utf-8-sig pour les BOM
+                df = pd.read_csv(filepath, sep=';', encoding='utf-8-sig')
+                logger.info("🔧 Encodage: utf-8-sig (avec BOM)")
+            except:
+                # Essayer latin-1
+                df = pd.read_csv(filepath, sep=';', encoding='latin-1')
+                logger.info("🔧 Encodage: latin-1")
+            
+            # Nettoyer les guillemets parasites
+            def clean_cell(cell):
+                if isinstance(cell, str):
+                    # Supprimer les séquences "rn""> et autres parasites
+                    cell = cell.replace('"rn"">', '').replace('"rn">', '')
+                    cell = cell.replace('""', '"').strip('"')
+                    # Si ça ressemble encore à un nombre, vérifier
+                    if cell.isdigit():
+                        logger.warning(f"⚠️  Cellule numérique trouvée: {cell}")
+                return cell
+            
+            # Appliquer le nettoyage à toutes les colonnes de texte
+            for col in df.select_dtypes(include=['object']).columns:
+                df[col] = df[col].apply(clean_cell)
+            
+            logger.info(f"✅ {len(df)} matchs extraits de {filename}")
+            logger.debug(f"Colonnes: {list(df.columns)}")
+            
+            # Vérifier spécifiquement les équipes
+            if 'Away Team Name' in df.columns:
+                logger.info(f"🔍 Équipes away après nettoyage: {df['Away Team Name'].unique()[:5]}")
+            return df
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur extraction {filename}: {e}")
+            raise
+        """
         Extract WorldCupMatches2014.csv
         Votre fichier semble avoir un problème de délimitation
         """
@@ -352,7 +395,7 @@ class WorldCupExtractor:
         except Exception as e:
             logger.error(f"❌ Erreur extraction {filename}: {e}")
             raise        
-    # =====================================================================
+        # =====================================================================
 # CLASSE TRANSFORM (Data Engineer 2)
 # =====================================================================
 
@@ -367,9 +410,8 @@ class WorldCupTransformer:
         self.teams_mapping_2018 = TEAMS_MAPPING_2018
     
     # -------------------- Fonctions utilitaires --------------------
-    
-    @staticmethod
 
+    @staticmethod
     def parse_score(score_str):
         """
         Parse le score au format '4-1 (3-0)' ou '2-2'
@@ -382,25 +424,77 @@ class WorldCupTransformer:
             # Convertir en string et nettoyer
             score_clean = str(score_str).strip()
             
+            # Si c'est déjà un tuple/liste (bug possible)
+            if isinstance(score_str, (tuple, list)) and len(score_str) == 2:
+                return int(score_str[0]), int(score_str[1])
+            
+            # Si c'est un nombre seul (bug)
+            if score_clean.isdigit():
+                logger.warning(f"⚠️  Score numérique seul: {score_clean}")
+                return int(score_clean), 0
+            
             # Regex pour capturer X-Y au début
             match = re.match(r'(\d+)-(\d+)', score_clean)
             if match:
                 home = int(match.group(1))
                 away = int(match.group(2))
                 return max(0, home), max(0, away)  # S'assurer que c'est >= 0
+            
+            # Essayer d'autres formats
+            if ':' in score_clean:
+                parts = score_clean.split(':')
+                if len(parts) == 2:
+                    return int(parts[0]), int(parts[1])
+            
+            logger.warning(f"⚠️  Score non parsable: {repr(score_str)}")
             return 0, 0
-        except:
+        except Exception as e:
+            logger.warning(f"⚠️  Erreur parsing score {repr(score_str)}: {e}")
             return 0, 0
+
+        # AVANT d'appliquer normalize_team
     
     def normalize_team(self, team_name):
-        """Normalise le nom d'une équipe"""
+        """Normalise le nom d'une équipe - VERSION RENFORCÉE"""
+        # DEBUG: Afficher ce qui est reçu
+        debug_info = f"normalize_team reçoit: {repr(team_name)} (type: {type(team_name)})"
+        
         if pd.isna(team_name):
-            return None
+            logger.warning(f"⚠️  {debug_info} → NaN")
+            return "Unknown"
         
-        team = str(team_name).strip()
+        # Convertir en string
+        try:
+            team = str(team_name)
+        except:
+            logger.error(f"❌ Impossible de convertir en string: {repr(team_name)}")
+            return "Unknown"
         
-        # Nettoyer les guillemets et espaces
+        team = team.strip()
+        
+        # DÉTECTION SPÉCIFIQUE DES PROBLÈMES
+        if team.isdigit():
+            logger.error(f"❌ ÉQUIPE NUMÉRIQUE: {team}")
+            logger.error(f"  Valeur brute: {repr(team_name)}")
+            logger.error(f"  Type: {type(team_name)}")
+            
+            # Essayer de récupérer le vrai nom
+            if isinstance(team_name, (int, float)):
+                # Si c'est un nombre, c'est probablement une erreur d'index
+                return "Unknown"
+            
+            return "Unknown"
+        
+        # Si c'est très court ou suspect
+        if len(team) <= 2 and team not in ['US', 'DR', 'FR', 'UK']:
+            logger.warning(f"⚠️  Nom d'équipe suspect (trop court): {team}")
+        
+        # Nettoyer les guillemets
         team = team.replace('"', '').strip()
+        
+        # Éviter les chaînes vides
+        if team == '':
+            return "Unknown"
         
         # Mapping historique
         if team in self.teams_mapping:
@@ -409,11 +503,12 @@ class WorldCupTransformer:
         # Normalisation casse (Title Case)
         team = team.title()
         
-        # Suppression accents optionnelle (décommenter si souhaité)
-        # team = unidecode(team)
+        # Correction d'encodage
+        if "C�Te" in team or "Côte" in team or "Cote" in team:
+            team = "Cote d'Ivoire"
         
         return team
-    
+
     def normalize_city(self, city_name):
         """Normalise le nom d'une ville"""
         if pd.isna(city_name):
@@ -515,6 +610,14 @@ class WorldCupTransformer:
         logger.info("🔄 Transformation Source 1 (1930-2010)...")
         logger.debug(f"Colonnes reçues: {list(df.columns)}")
         
+                # ========== FILTRE IMPORTANT : ENLEVER 2014 ==========
+        # Le fichier contient des doublons avec source 2
+        if 'year' in df.columns:
+            avant = len(df)
+            df = df[df['year'] != 2014]  # Enlève 2014
+            apres = len(df)
+            logger.info(f"✅ Supprimé {avant - apres} matchs de 2014")
+
         df_clean = df.copy()
         
         # CRITIQUE: Vérifier et normaliser les noms de colonnes
@@ -622,6 +725,173 @@ class WorldCupTransformer:
         return result_df
     
     def transform_source2(self, df):
+        """
+        Transformation WorldCupMatches2014.csv - VERSION CORRIGÉE
+        """
+        logger.info("🔄 Transformation Source 2 (2014)...")
+        logger.info(f"📊 Shape: {df.shape}")
+        logger.info(f"🔧 Colonnes: {list(df.columns)}")
+        
+        # AFFICHER UN EXEMPLE COMPLET POUR DÉBOGAGE
+        logger.info("🔍 Premier match brut:")
+        first_row = df.iloc[0]
+        for col in ['Year', 'Home Team Name', 'Home Team Goals', 'Away Team Goals', 'Away Team Name', 'Datetime']:
+            if col in first_row:
+                logger.info(f"  {col}: {repr(first_row[col])}")
+        
+        df_clean = df.copy()
+        
+        # 1. CORRECTION CRITIQUE : Convertir les scores en numérique AVANT
+        logger.info("🔧 Conversion des scores...")
+        
+        # Home goals
+        if 'Home Team Goals' in df_clean.columns:
+            logger.info(f"  Home Goals avant conversion: {df_clean['Home Team Goals'].head(3).tolist()}")
+            df_clean['home_result'] = pd.to_numeric(
+                df_clean['Home Team Goals'], 
+                errors='coerce'
+            ).fillna(0).astype(int)
+            logger.info(f"  Home Goals après conversion: {df_clean['home_result'].head(3).tolist()}")
+        else:
+            logger.error("❌ Colonne 'Home Team Goals' non trouvée")
+            logger.error(f"Colonnes disponibles: {list(df_clean.columns)}")
+            raise ValueError("Colonne Home Team Goals manquante")
+        
+        # Away goals
+        if 'Away Team Goals' in df_clean.columns:
+            logger.info(f"  Away Goals avant conversion: {df_clean['Away Team Goals'].head(3).tolist()}")
+            df_clean['away_result'] = pd.to_numeric(
+                df_clean['Away Team Goals'], 
+                errors='coerce'
+            ).fillna(0).astype(int)
+            logger.info(f"  Away Goals après conversion: {df_clean['away_result'].head(3).tolist()}")
+        else:
+            logger.error("❌ Colonne 'Away Team Goals' non trouvée")
+            raise ValueError("Colonne Away Team Goals manquante")
+        
+        # 2. Normaliser les noms d'équipes
+        logger.info("🔧 Normalisation des équipes...")
+        
+        if 'Home Team Name' in df_clean.columns:
+            logger.info(f"  Home teams avant: {df_clean['Home Team Name'].head(3).tolist()}")
+            df_clean['home_team'] = df_clean['Home Team Name'].apply(self.normalize_team)
+            logger.info(f"  Home teams après: {df_clean['home_team'].head(3).tolist()}")
+        else:
+            logger.error("❌ Colonne 'Home Team Name' non trouvée")
+            raise ValueError("Colonne Home Team Name manquante")
+        
+        if 'Away Team Name' in df_clean.columns:
+            logger.info(f"  Away teams avant: {df_clean['Away Team Name'].head(3).tolist()}")
+            df_clean['away_team'] = df_clean['Away Team Name'].apply(self.normalize_team)
+            logger.info(f"  Away teams après: {df_clean['away_team'].head(3).tolist()}")
+        else:
+            logger.error("❌ Colonne 'Away Team Name' non trouvée")
+            raise ValueError("Colonne Away Team Name manquante")
+        
+        # 3. VÉRIFICATION : Afficher les scores complets
+        logger.info("🔍 Vérification scores complets (5 premiers):")
+        for i in range(min(5, len(df_clean))):
+            row = df_clean.iloc[i]
+            logger.info(f"  {i+1}: {row['home_team']} {row['home_result']}-{row['away_result']} {row['away_team']}")
+        
+        # 4. Calculer le résultat AVEC NOMS D'ÉQUIPES
+        logger.info("🔧 Calcul du résultat...")
+        
+        def safe_compute_result(row):
+            """Version sécurisée de compute_result"""
+            try:
+                return self.compute_result(
+                    row['home_result'], 
+                    row['away_result'],
+                    row['home_team'],
+                    row['away_team']
+                )
+            except Exception as e:
+                logger.warning(f"Erreur compute_result: {e}")
+                return "draw"
+        
+        df_clean['result'] = df_clean.apply(safe_compute_result, axis=1)
+        
+        # Vérifier les résultats
+        logger.info("🔍 Vérification résultats (5 premiers):")
+        for i in range(min(5, len(df_clean))):
+            row = df_clean.iloc[i]
+            logger.info(f"  {i+1}: {row['home_team']} vs {row['away_team']} → {row['result']}")
+        
+        # 5. Autres colonnes
+        logger.info("🔧 Traitement des autres colonnes...")
+        
+        # City
+        if 'City' in df_clean.columns:
+            df_clean['city'] = df_clean['City'].apply(self.normalize_city)
+            logger.info(f"  Villes: {df_clean['city'].unique()[:5]}")
+        else:
+            logger.warning("⚠️  Colonne 'City' non trouvée")
+            df_clean['city'] = 'Unknown'
+        
+        # Round
+        if 'Stage' in df_clean.columns:
+            df_clean['round'] = df_clean['Stage'].apply(self.normalize_round)
+            logger.info(f"  Rounds: {df_clean['round'].unique()}")
+        else:
+            logger.warning("⚠️  Colonne 'Stage' non trouvée")
+            df_clean['round'] = 'Group Stage'
+        
+        # Edition
+        if 'Year' in df_clean.columns:
+            df_clean['edition'] = df_clean['Year'].astype(str)
+            logger.info(f"  Édition: {df_clean['edition'].iloc[0]}")
+        else:
+            logger.warning("⚠️  Colonne 'Year' non trouvée")
+            df_clean['edition'] = '2014'
+        
+        # Date
+        if 'Datetime' in df_clean.columns:
+            df_clean['date'] = df_clean['Datetime'].apply(self.parse_datetime)
+            logger.info(f"  Dates: {df_clean['date'].iloc[0]} - {df_clean['date'].iloc[-1]}")
+        else:
+            logger.warning("⚠️  Colonne 'Datetime' non trouvée")
+            df_clean['date'] = pd.to_datetime('2014-07-01')
+        
+        # 6. Vérifier les colonnes finales
+        required_cols = ['home_team', 'away_team', 'home_result', 'away_result',
+                        'result', 'date', 'round', 'city', 'edition']
+        
+        missing_cols = [col for col in required_cols if col not in df_clean.columns]
+        if missing_cols:
+            logger.error(f"❌ Colonnes manquantes: {missing_cols}")
+            logger.error(f"Colonnes disponibles: {list(df_clean.columns)}")
+            raise ValueError(f"Colonnes manquantes: {missing_cols}")
+        
+        result_df = df_clean[required_cols].copy()
+        
+        # 7. VÉRIFICATION FINALE DÉTAILLÉE
+        logger.info("🔍 VÉRIFICATION FINALE DÉTAILLÉE:")
+        logger.info(f"📊 Nombre de matchs: {len(result_df)}")
+        
+        # Analyser les résultats
+        results_dist = result_df['result'].value_counts()
+        logger.info("📈 Distribution des résultats:")
+        for result, count in results_dist.head(10).items():
+            logger.info(f"  {result}: {count} matchs ({count/len(result_df)*100:.1f}%)")
+        
+        # Vérifier les matchs nuls
+        draws = result_df[result_df['result'] == 'draw']
+        logger.info(f"🔍 {len(draws)} matchs nuls:")
+        for i in range(min(3, len(draws))):
+            row = draws.iloc[i]
+            logger.info(f"  {row['home_team']} {row['home_result']}-{row['away_result']} {row['away_team']}")
+        
+        # Vérifier les problèmes potentiels
+        suspicious = result_df[result_df['result'].astype(str).str.isdigit()]
+        if len(suspicious) > 0:
+            logger.warning(f"⚠️  {len(suspicious)} résultats suspects (numériques):")
+            for i in range(min(3, len(suspicious))):
+                row = suspicious.iloc[i]
+                logger.warning(f"  Problème: {row['home_team']} vs {row['away_team']} → {row['result']}")
+        
+        logger.info(f"✅ Source 2 transformée: {len(result_df)} matchs")
+        return result_df
         """
         Transformation WorldCupMatches2014.csv
         """
@@ -792,98 +1062,89 @@ class WorldCupTransformer:
     def transform_source3(self, df):
         """
         Transformation Fifa_world_cup_matches.csv
-        Format supposé: Année, Tour, Équipe domicile, Équipe extérieur, etc.
         """
         logger.info("🔄 Transformation Source 3 (Fifa_world_cup_matches)...")
-        logger.info(f"📊 Shape: {df.shape}")
-        logger.info(f"🔧 Colonnes: {list(df.columns)}")
         
-        if len(df) == 0:
-            logger.warning("⚠️  DataFrame vide")
-            return pd.DataFrame()
+        # AFFICHER pour vérifier
+        logger.info("🔍 Vérification des colonnes de score:")
+        for col in df.columns:
+            if 'goal' in col.lower() or 'score' in col.lower():
+                logger.info(f"  '{col}' → {df[col].head(3).tolist()}")
         
         df_clean = df.copy()
         
-        # Normaliser les noms de colonnes pour correspondre au format attendu
-        df_clean.columns = [col.lower().strip() for col in df_clean.columns]
-        logger.debug(f"Colonnes normalisées: {list(df_clean.columns)}")
-        
-        # Chercher les colonnes correspondantes
+        # Chercher les colonnes CORRECTES
         col_mapping = {}
         
-        # Équipes domicile
-        home_patterns = ['home', 'team1', 'hometeam', 'home team', 'local', 'équipe domicile']
-        for pattern in home_patterns:
-            for col in df_clean.columns:
-                if pattern in col:
-                    col_mapping['home_team'] = col
-                    break
-            if 'home_team' in col_mapping:
-                break
-        
-        # Équipes extérieur
-        away_patterns = ['away', 'team2', 'awayteam', 'away team', 'visiteur', 'équipe extérieur']
-        for pattern in away_patterns:
-            for col in df_clean.columns:
-                if pattern in col:
-                    col_mapping['away_team'] = col
-                    break
-            if 'away_team' in col_mapping:
-                break
-        
-        # Résultats
+       # 1. Équipes - LES COLONNES EXACTES
+        col_mapping['home_team'] = 'team1'
+        col_mapping['away_team'] = 'team2'
+
+        # Vérifier qu'elles existent
+        if 'team1' not in df_clean.columns:
+            logger.error("❌ Colonne 'team1' non trouvée")
+            return pd.DataFrame()
+        if 'team2' not in df_clean.columns:
+            logger.error("❌ Colonne 'team2' non trouvée")
+            return pd.DataFrame()
+
+        logger.info("✅ Colonnes équipes: 'team1' et 'team2'")
+        # 2. SCORES - IMPORTANT : Utiliser 'number of goals team1/team2'
         for col in df_clean.columns:
-            if 'homegoals' in col or 'home goals' in col or 'home_score' in col:
+            if 'number of goals team1' in col.lower():
                 col_mapping['home_goals'] = col
-            elif 'awaygoals' in col or 'away goals' in col or 'away_score' in col:
+                logger.info(f"✅ Score domicile: {col}")
+            elif 'number of goals team2' in col.lower():
                 col_mapping['away_goals'] = col
-            elif 'score' in col and 'home' not in col and 'away' not in col:
-                # Colonne score combiné
-                col_mapping['combined_score'] = col
+                logger.info(f"✅ Score extérieur: {col}")
         
-        # Date et autres
-        for col in df_clean.columns:
-            if 'date' in col:
-                col_mapping['date'] = col
-            elif 'year' in col or 'edition' in col:
-                col_mapping['year'] = col
-            elif 'city' in col or 'venue' in col or 'stadium' in col:
-                col_mapping['city'] = col
-            elif 'round' in col or 'stage' in col or 'tour' in col:
-                col_mapping['round'] = col
+        logger.info(f"🔍 Mapping final: {col_mapping}")
         
-        logger.info(f"🔍 Mapping détecté pour source 3: {col_mapping}")
+        # Si pas trouvé, chercher autrement
+        if 'home_goals' not in col_mapping:
+            logger.warning("⚠️  Colonne 'number of goals team1' non trouvée, recherche alternative...")
+            for col in df_clean.columns:
+                if 'goal' in col.lower() and 'team1' in col.lower():
+                    col_mapping['home_goals'] = col
+                    logger.info(f"🔧 Score domicile alternatif: {col}")
         
-        # Créer le DataFrame final avec les colonnes standardisées
+        if 'away_goals' not in col_mapping:
+            for col in df_clean.columns:
+                if 'goal' in col.lower() and 'team2' in col.lower():
+                    col_mapping['away_goals'] = col
+                    logger.info(f"🔧 Score extérieur alternatif: {col}")
+        
+        # VÉRIFICATION CRITIQUE
+        required = ['home_team', 'away_team', 'home_goals', 'away_goals']
+        missing = [col for col in required if col not in col_mapping]
+        
+        if missing:
+            logger.error(f"❌ Colonnes manquantes: {missing}")
+            logger.error(f"Colonnes disponibles: {list(df_clean.columns)}")
+            return pd.DataFrame()
+        
+        # Créer le DataFrame avec les BONNES colonnes
         result_df = pd.DataFrame()
         
-        # 1. Équipes
-        if 'home_team' in col_mapping:
-            result_df['home_team'] = df_clean[col_mapping['home_team']].apply(self.normalize_team)
-        else:
-            logger.error("❌ Colonne home_team non trouvée")
-            return pd.DataFrame()
+        # Équipes
+        result_df['home_team'] = df_clean[col_mapping['home_team']].apply(self.normalize_team)
+        result_df['away_team'] = df_clean[col_mapping['away_team']].apply(self.normalize_team)
         
-        if 'away_team' in col_mapping:
-            result_df['away_team'] = df_clean[col_mapping['away_team']].apply(self.normalize_team)
-        else:
-            logger.error("❌ Colonne away_team non trouvée")
-            return pd.DataFrame()
+        # SCORES (en utilisant les bonnes colonnes)
+        result_df['home_result'] = pd.to_numeric(
+            df_clean[col_mapping['home_goals']], 
+            errors='coerce'
+        ).fillna(0).astype(int)
         
-        # 2. Scores - gérer différents formats
-        if 'home_goals' in col_mapping and 'away_goals' in col_mapping:
-            # Format séparé
-            result_df['home_result'] = pd.to_numeric(df_clean[col_mapping['home_goals']], errors='coerce').fillna(0).astype(int)
-            result_df['away_result'] = pd.to_numeric(df_clean[col_mapping['away_goals']], errors='coerce').fillna(0).astype(int)
-        elif 'combined_score' in col_mapping:
-            # Format combiné "X-Y"
-            scores = df_clean[col_mapping['combined_score']].apply(self.parse_score)
-            result_df['home_result'] = scores.apply(lambda x: x[0])
-            result_df['away_result'] = scores.apply(lambda x: x[1])
-        else:
-            logger.warning("⚠️  Aucune colonne de score trouvée, utilisation de scores par défaut")
-            result_df['home_result'] = 0
-            result_df['away_result'] = 0
+        result_df['away_result'] = pd.to_numeric(
+            df_clean[col_mapping['away_goals']], 
+            errors='coerce'
+        ).fillna(0).astype(int)
+        
+        # Vérifier les scores
+        logger.info("🔍 Vérification scores (5 premiers):")
+        for i in range(min(5, len(result_df))):
+            logger.info(f"  {result_df.iloc[i]['home_team']} {result_df.iloc[i]['home_result']}-{result_df.iloc[i]['away_result']} {result_df.iloc[i]['away_team']}")
         
         # 3. Résultat AVEC NOM DU GAGNANT
         result_df['result'] = result_df.apply(
@@ -896,50 +1157,83 @@ class WorldCupTransformer:
             axis=1
         )
         # 4. Date
+        for col in df_clean.columns:
+            if 'date' in col.lower():
+                col_mapping['date'] = col
+                logger.info(f"✅ Colonne date: {col}")
+                break
         if 'date' in col_mapping:
-            result_df['date'] = df_clean[col_mapping['date']].apply(self.parse_datetime)
+                # DEBUG : Voir les formats
+            sample_dates = df_clean[col_mapping['date']].head(5).tolist()
+            logger.info(f"🔍 Format des dates (5 premières): {sample_dates}")
+            # Fonction spéciale pour les dates '20Nov22'
+            def parse_date_special(date_str):
+                if pd.isna(date_str):
+                    return None
+                
+                date_str = str(date_str).strip()
+                
+                # Format '20Nov22'
+                if len(date_str) == 7 and date_str[2:5].isalpha():
+                    try:
+                        day = date_str[:2]
+                        month = date_str[2:5]
+                        year = "20" + date_str[5:]  # "22" -> "2022"
+                        formatted = f"{day} {month} {year}"
+                        return pd.to_datetime(formatted, format='%d %b %Y')
+                    except:
+                        return None
+                
+                # Sinon utiliser parse_datetime normal
+                return self.parse_datetime(date_str)
+            
+            result_df['date'] = df_clean[col_mapping['date']].apply(parse_date_special)
+            logger.info(f"🔍 Dates parsées: {result_df['date'].head(3).tolist()}")
+            
         else:
-            logger.warning("⚠️  Colonne date non trouvée, tentative avec année")
+            logger.warning("⚠️  Colonne date non trouvée")
             result_df['date'] = None
         
         # 5. Édition/Année
         if 'year' in col_mapping:
             result_df['edition'] = df_clean[col_mapping['year']].astype(str)
-            # Compléter les dates manquantes avec l'année
-            if result_df['date'].isnull().any() and 'edition' in result_df.columns:
-                for idx, row in result_df[result_df['date'].isnull()].iterrows():
-                    if row['edition'].isdigit():
-                        result_df.at[idx, 'date'] = pd.to_datetime(f"{row['edition']}-07-01")
         else:
-            logger.warning("⚠️  Colonne edition/year non trouvée")
-            result_df['edition'] = 'Unknown'
-        
-        # 6. Ville
-        if 'city' in col_mapping:
-            result_df['city'] = df_clean[col_mapping['city']].apply(self.normalize_city)
-        else:
-            result_df['city'] = 'Unknown'
-        
-        # 7. Round
-        if 'round' in col_mapping:
-            result_df['round'] = df_clean[col_mapping['round']].apply(self.normalize_round)
-        else:
-            result_df['round'] = 'Group Stage'
-        
-        # Vérification finale
-        logger.info(f"📊 Source 3 transformée: {len(result_df)} matchs")
-        
-        # Gérer les dates manquantes
-        if result_df['date'].isnull().any():
-            logger.warning(f"⚠️  {result_df['date'].isnull().sum()} dates manquantes après traitement")
-            # Remplacer par date par défaut
-            default_date = pd.to_datetime('1900-01-01')
-            result_df['date'] = result_df['date'].fillna(default_date)
-        
-        logger.debug(f"Aperçu source 3:\n{result_df.head(3)}")
-        
-        return result_df
-    
+            # Déduire depuis les dates
+            if 'date' in result_df.columns:
+                # Prendre l'année de la première date
+                first_year = result_df['date'].iloc[0].year
+                result_df['edition'] = str(first_year)
+                logger.info(f"✅ Édition déduite depuis dates: {first_year}")
+            else:
+                logger.warning("⚠️  Colonne edition/year non trouvée, utilisation '2022' (déduit)")
+                result_df['edition'] = '2022'  # Parce que les dates sont en 2022
+                
+                # 6. Ville
+                if 'city' in col_mapping:
+                    result_df['city'] = df_clean[col_mapping['city']].apply(self.normalize_city)
+                else:
+                    result_df['city'] = 'Unknown'
+                
+                # 7. Round
+                if 'round' in col_mapping:
+                    result_df['round'] = df_clean[col_mapping['round']].apply(self.normalize_round)
+                else:
+                    result_df['round'] = 'Group Stage'
+                
+                # Vérification finale
+                logger.info(f"📊 Source 3 transformée: {len(result_df)} matchs")
+                
+                # Gérer les dates manquantes
+                if result_df['date'].isnull().any():
+                    logger.warning(f"⚠️  {result_df['date'].isnull().sum()} dates manquantes après traitement")
+                    # Remplacer par date par défaut
+                    default_date = pd.to_datetime('1900-01-01')
+                    result_df['date'] = result_df['date'].fillna(default_date)
+                
+                logger.debug(f"Aperçu source 3:\n{result_df.head(3)}")
+                
+                return result_df
+            
     def transform_source4(self, json_data):
         """
         Transformation data_2018.json
@@ -1747,7 +2041,7 @@ def run_etl_pipeline():
   - Tables créées: world_cup_matches, stadiums, teams, tv_channels
   
 🎯 Points forts:
-  ✓ Données historiques complètes (1930-2018)
+  ✓ Données historiques complètes (1930-2022)
   ✓ Édition 2018 avec stades et équipes détaillés
   ✓ Schéma relationnel complet
   ✓ Validation rigoureuse
