@@ -13,10 +13,10 @@ Charger les données dans une base relationnelle SQLite
 Documenter et structurer le projet de manière claire
 
 ## Données traitées
-1930 – 2010 : CSV (formats et encodages hétérogènes)
-2014 : CSV enrichi (dates, stades)
-2018 : JSON imbriqué (groupes, phases finales, stades)
-2022 : CSV incomplet, enrichi via sources additionnelles
+- 1930 – 2010 : CSV (formats et encodages hétérogènes)
+- 2014 : CSV enrichi (dates, stades)
+- 2018 : JSON imbriqué (groupes, phases finales, stades)
+- 2022 : CSV incomplet, enrichi via sources additionnelles
 
 Volume total : ~7 700 matchs.
 
@@ -24,13 +24,14 @@ Volume total : ~7 700 matchs.
 Les données finales sont stockées dans une table unique world_cup_matches, avec une ligne par match de Coupe du Monde, toutes éditions confondues.
 
 ## Champs principaux :
-équipes (home / away)
-scores
-date
-tour de compétition
-ville
-édition
-métadonnées (stade, codes FIFA, source…)
+- équipes (home / away)
+- scores
+- date
+- tour de compétition
+- ville
+- édition
+- métadonnées (stade, codes FIFA, source…)
+
 Ce choix garantit un schéma simple, homogène et facilement exploitable qui répond aux attentes de rendu pour le brief.
 
 ## Choix techniques
@@ -44,7 +45,7 @@ Architecture claire Extract → Transform → Load
 Le résultat est un fichier worldcup.db prêt pour l’analyse.
 
 ## Structure du projet
-.
+```bash
 ├── main.py
 ├── extract.py        # WorldCupExtractor
 ├── transform.py      # WorldCupTransformer
@@ -53,7 +54,7 @@ Le résultat est un fichier worldcup.db prêt pour l’analyse.
 │   ├── raw/          # fichiers sources (non versionnés)
 │   └── processed/    # fichiers intermédiaires
 └── README.md
-
+```
 
 Les sources de données ne sont pas versionnées volontairement.
 
@@ -64,7 +65,7 @@ Ajout de nouvelles éditions (ex. 2026)
 Enrichissements statistiques supplémentaires
 
 ## Équipe
-Dahani Fernando
-Matthieu Navarro
-David Brimeux
-Mathieu Barbé-Gayet
+- Dahani Fernando
+- Matthieu Navarro
+- David Brimeux
+- Mathieu Barbé-Gayet
