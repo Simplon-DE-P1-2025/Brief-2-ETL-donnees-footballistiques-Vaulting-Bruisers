@@ -22,7 +22,7 @@ def run_etl_pipeline():
     logger = logging.getLogger(__name__)
     
     logger.info("="*70)
-    logger.info("🚀 DÉBUT DU PIPELINE ETL")
+    logger.info("DÉBUT DU PIPELINE ETL - World Cup Data")
     logger.info("="*70)
     
     try:
@@ -68,18 +68,18 @@ def run_etl_pipeline():
         
         # DEBUG CRITIQUE
         if df_final is None:
-            logger.error("❌ ERREUR CRITIQUE: consolidate() a retourné None!")
+            logger.error("ERREUR CRITIQUE: consolidate() a retourné None!")
             logger.error("   Arrêt du pipeline car pas de données à charger.")
             # Vous pouvez soit arrêter ici, soit continuer avec un DataFrame vide
             df_final = pd.DataFrame()  # Créer un DataFrame vide pour éviter l'erreur suivante
         else:
-            logger.info(f"✅ consolidate() a retourné {len(df_final)} lignes")
+            logger.info(f"consolidate() a retourné {len(df_final)} lignes")
 
         # Audit Qualité des Données (Data Quality)
         transformer.analyze_results(df_final)
         
         if not transformer.validate(df_final):
-            logger.warning("⚠️ Problèmes de validation détectés (pipeline continue)")
+            logger.warning(" Problèmes de validation détectés (pipeline continue)")
         # =====================================================================
         # PHASE 3 : CHARGEMENT (Load)
         # Persistance des données nettoyées dans le Data Warehouse (SQLite)
@@ -99,11 +99,13 @@ def run_etl_pipeline():
         
         # Export Flat File (CSV) pour audit ou usage BI léger
         df_final.to_csv("data/processed/worldcup_clean.csv", index=False)
-        logger.info("✅ PIPELINE TERMINÉ AVEC SUCCÈS")
-        
+        logger.info("=" * 70)
+        logger.info("PIPELINE TERMINÉ AVEC SUCCÈS")
+        logger.info("=" * 70)
+                
     except Exception as e:
         # Gestion globale des exceptions critiques
-        logger.error(f"❌ ERREUR PIPELINE: {e}")
+        logger.error(f"ERREUR PIPELINE: {e}")
         import traceback
         traceback.print_exc()
 

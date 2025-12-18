@@ -6,7 +6,7 @@ logger = logging.getLogger(__name__)
 
 class WorldCupLoader:
     """
-    Module de Chargement simplifié.
+    Module de Chargement des données transformées dans une base SQLite.
     Charge uniquement la table principale des matchs du tournoi.
     """
     
@@ -14,18 +14,20 @@ class WorldCupLoader:
         self.db_path = db_path
         self.conn = None
     
+    # Établit la connexion SQLite pour accès par nom de colonne
     def connect(self):
         try:
             self.conn = sqlite3.connect(self.db_path)
             self.conn.row_factory = sqlite3.Row
-            logger.info(f"✅ Connexion à {self.db_path} établie")
+            logger.info(f"Connexion à {self.db_path} établie")
         except Exception as e:
-            logger.error(f"❌ Erreur connexion DB: {e}")
+            logger.error(f"Erreur connexion DB: {e}")
             raise
     
+    # Crée la table world_cup_matches et supprime anciennes tables (schema simplifié)
     def create_schema(self):
         """Création du schéma simplifié (Une seule table)."""
-        logger.info("🏗️  Création du schéma simplifié...")
+        logger.info("Création du schéma simplifié...")
         sql = """
         DROP TABLE IF EXISTS world_cup_matches;
         DROP TABLE IF EXISTS stadiums;     -- On nettoie les anciennes tables si elles existent
@@ -52,14 +54,15 @@ class WorldCupLoader:
         try:
             self.conn.executescript(sql)
             self.conn.commit()
-            logger.info("✅ Table world_cup_matches créée.")
+            logger.info("Table world_cup_matches créée.")
         except Exception as e:
-            logger.error(f"❌ Erreur création schéma: {e}")
+            logger.error(f"Erreur création schéma: {e}")
             raise
     
+    # Insère les données du DataFrame dans la table avec formatage dates SQLite
     def load_data(self, df):
         """Chargement des données dans la table unique."""
-        logger.info(f"📤 Chargement de {len(df)} matchs...")
+        logger.info(f"Chargement de {len(df)} matchs...")
         try:
             df_load = df.copy()
             # Formatage Date pour SQLite
@@ -69,28 +72,28 @@ class WorldCupLoader:
             df_load.to_sql('world_cup_matches', self.conn, if_exists='append', index=False)
             
             self.conn.commit()
-            logger.info("✅ Données chargées avec succès.")
+            logger.info("Données chargées avec succès.")
         except Exception as e:
-            logger.error(f"❌ Erreur chargement: {e}")
+            logger.error(f"Erreur chargement: {e}")
             self.conn.rollback()
             raise
-
-    # Note : La méthode load_additional_data a été supprimée car inutile.
-
+    
+    # Vérifie le nombre de matchs chargés et affiche les phases présentes
     def verify_load(self):
         """Vérification simple."""
         try:
             count = pd.read_sql_query("SELECT COUNT(*) as t FROM world_cup_matches", self.conn)['t'][0]
-            logger.info(f"✅ Base de données finalisée : {count} matchs enregistrés.")
+            logger.info(f"Base de données finalisée : {count} matchs enregistrés.")
             
             # Petit check pour voir si on a bien viré les préliminaires
-            rounds = pd.read_sql_query("SELECT DISTINCT round FROM world_cup_matches", self.conn)
-            logger.info(f"ℹ️  Phases présentes : {rounds['round'].tolist()}")
+          # rounds = pd.read_sql_query("SELECT DISTINCT round FROM world_cup_matches", self.conn)
+          # logger.info(f" Phases présentes : {rounds['round'].tolist()}")
             
         except Exception as e:
-            logger.error(f"❌ Erreur vérification: {e}")
+            logger.error(f"Erreur vérification: {e}")
 
+    # Ferme proprement la connexion à la base de données
     def close(self):
         if self.conn:
             self.conn.close()
-            logger.info("✅ Connexion fermée")
+            logger.info("Connexion fermée")

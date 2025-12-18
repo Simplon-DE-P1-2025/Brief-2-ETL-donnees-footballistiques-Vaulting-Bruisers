@@ -12,32 +12,35 @@ class WorldCupExtractor:
     Gère les spécificités techniques des fichiers (encodage, séparateurs, nettoyage bas niveau).
     """
     
+    # Charge le CSV historique 1930-2010 avec gestion d'erreurs
     def __init__(self, data_dir="data/raw"):
         # Utilisation de pathlib pour une gestion des chemins compatible tous OS (Windows/Linux/Mac)
         self.data_dir = Path(data_dir)
-        
+    
+    # Charge le CSV historique 1930-2010 avec gestion d'erreurs
     def extract_source1(self, filename="matches_1930-2010.csv"):
         """
         Ingestion du dataset historique (1930-2010).
         Format attendu : CSV standard.
         """
-        logger.info(f"📥 Extraction de {filename}...")
+        logger.info(f"Extraction de {filename}...")
         try:
             filepath = self.data_dir / filename
             df = pd.read_csv(filepath)
-            logger.info(f"✅ {len(df)} matchs extraits de {filename}")
+            logger.info(f" {len(df)} matchs extraits de {filename}")
             return df
         except Exception as e:
-            logger.error(f"❌ Erreur extraction {filename}: {e}")
+            logger.error(f"Erreur extraction {filename}: {e}")
             raise
     
+    # Charge le CSV 2014 avec fallback encodage (UTF-8-SIG/Latin-1) et nettoyage 
     def extract_source2(self, filename="WorldCupMatches2014.csv"):
         """
         Ingestion du dataset spécifique 2014.
         Particularité : Fichier bruité nécessitant un nettoyage bas niveau des chaînes de caractères
         et une gestion robuste de l'encodage (tentative UTF-8-SIG puis Latin-1).
         """
-        logger.info(f"📥 Extraction de {filename}...")
+        logger.info(f"Extraction de {filename}...")
         try:
             filepath = self.data_dir / filename
             
@@ -45,7 +48,7 @@ class WorldCupExtractor:
             try:
                 df = pd.read_csv(filepath, sep=';', encoding='utf-8-sig')
             except:
-                logger.warning("⚠️ Encodage UTF-8 échoué, tentative Latin-1")
+                logger.warning(" Encodage UTF-8 échoué, tentative Latin-1")
                 df = pd.read_csv(filepath, sep=';', encoding='latin-1')
             
             # Fonction locale de nettoyage des artefacts (ex: "rn"">) présents dans ce fichier spécifique
@@ -59,19 +62,20 @@ class WorldCupExtractor:
             for col in df.select_dtypes(include=['object']).columns:
                 df[col] = df[col].apply(clean_cell)
             
-            logger.info(f"✅ {len(df)} matchs extraits de {filename}")
+            logger.info(f" {len(df)} matchs extraits de {filename}")
             return df
         except Exception as e:
-            logger.error(f"❌ Erreur extraction {filename}: {e}")
+            logger.error(f"Erreur extraction {filename}: {e}")
             raise
     
+    # Charge le CSV 2022 avec détection auto séparateur et normalisation colonnes
     def extract_source3(self, filename="Fifa_world_cup_matches.csv"):
         """
         Ingestion du dataset 2022.
         Gère automatiquement la détection du séparateur (virgule ou point-virgule)
         et nettoie les espaces superflus dans les noms de colonnes.
         """
-        logger.info(f"📥 Extraction de {filename}...")
+        logger.info(f"Extraction de {filename}...")
         try:
             filepath = self.data_dir / filename
             # Tentative de lecture standard puis fallback sur séparateur ';'
@@ -82,34 +86,35 @@ class WorldCupExtractor:
             
             # Normalisation des en-têtes (suppression espaces début/fin)
             df.columns = [col.strip() for col in df.columns]
-            logger.info(f"✅ {len(df)} matchs extraits de {filename}")
+            logger.info(f" {len(df)} matchs extraits de {filename}")
             return df
         except Exception as e:
-            logger.error(f"❌ Erreur extraction {filename}: {e}")
+            logger.error(f"Erreur extraction {filename}: {e}")
             raise
 
+    # Charge le JSON 2018 (structure hiérarchique matchs/stades/équipes)
     def extract_source4(self, filename="data_2018.json"):
         """
         Ingestion du dataset 2018 au format JSON.
         Charge la structure hiérarchique complète (matchs, stades, équipes) en mémoire.
         """
-        logger.info(f"📥 Extraction de {filename}...")
+        logger.info(f"Extraction de {filename}...")
         try:
             filepath = self.data_dir / filename
             with open(filepath, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-            logger.info(f"✅ JSON 2018 chargé avec succès")
+            logger.info(f" JSON 2018 chargé avec succès")
             return data
         except Exception as e:
-            logger.error(f"❌ Erreur extraction {filename}: {e}")
+            logger.error(f"Erreur extraction {filename}: {e}")
             raise
-    
 
+    # Charge le TXT dates historiques avec parsing virgules et nettoyage guillemets       
     def extract_historical_dates(self, filename="dates_1930_2010.txt"):
         """
         Extraction optimisée pour le format TXT (virgules, dates ISO).
         """
-        logger.info(f"📥 Extraction des dates historiques ({filename})...")
+        logger.info(f"Extraction des dates historiques ({filename})...")
         try:
             filepath = self.data_dir / filename
             
@@ -134,22 +139,24 @@ class WorldCupExtractor:
             df['home_team'] = df['home_team'].apply(clean_raw_text)
             df['away_team'] = df['away_team'].apply(clean_raw_text)
             
-            logger.info(f"✅ {len(df)} dates historiques chargées (Format TXT).")
+            logger.info(f" {len(df)} dates historiques chargées (Format TXT).")
             return df
             
         except Exception as e:
-            logger.warning(f"⚠️ Impossible de charger {filename}: {e}")
+            logger.warning(f" Impossible de charger {filename}: {e}")
             return None
             
         except Exception as e:
-            logger.warning(f"⚠️ Impossible de charger {filename}: {e}")
+            logger.warning(f" Impossible de charger {filename}: {e}")
             return None
+
+    # Charge le CSV mapping villes 2022 pour correction données manquantes
     def extract_cities_2022(self, filename="cities_2022.csv"):
         """
         Ingestion du fichier de correction (Mapping Villes 2022).
         Utilisé pour enrichir les données manquantes de la source principale 2022.
         """
-        logger.info(f"📥 Extraction des corrections villes 2022 ({filename})...")
+        logger.info(f"Extraction des corrections villes 2022 ({filename})...")
         try:
             filepath = self.data_dir / filename
             # Lecture avec séparateur ';' (défaut pour ce fichier)
@@ -158,8 +165,8 @@ class WorldCupExtractor:
             # Nettoyage des noms de colonnes pour garantir les jointures
             df.columns = [c.strip() for c in df.columns]
             
-            logger.info(f"✅ {len(df)} lignes de correction chargées")
+            logger.info(f" {len(df)} lignes de correction chargées")
             return df
         except Exception as e:
-            logger.warning(f"⚠️ Impossible de charger {filename}: {e}")
+            logger.warning(f" Impossible de charger {filename}: {e}")
             return None

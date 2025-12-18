@@ -19,7 +19,8 @@ class WorldCupTransformer:
         self.rounds_mapping = ROUNDS_MAPPING
         self.stadiums_mapping = STADIUMS_MAPPING_2018
         self.teams_mapping_2018 = TEAMS_MAPPING_2018
-        
+
+    # Extrait les scores d'un string via regex (gère formats hétérogènes, tuples, None)
     def parse_score(self, score_str):
         """
         Extrait les scores avec une Regex Universelle.
@@ -49,13 +50,14 @@ class WorldCupTransformer:
                 return home_score, away_score
             
             # Si la regex échoue, on log et on retourne None
-            logger.warning(f"⚠️ Impossible de parser le score : '{s}'")
+            logger.warning(f"Impossible de parser le score : '{s}'")
             return None, None
 
         except Exception as e:
-            logger.error(f"❌ Erreur parsing score '{score_str}': {e}")
+            logger.error(f"Erreur parsing score '{score_str}': {e}")
             return None, None
 
+    # Standardise les noms d'équipes selon mappings définis (encodage, synonymes)
     def normalize_team(self, team_name):
         """Standardise les noms d'équipes."""
         if pd.isna(team_name): return "Unknown"
@@ -90,6 +92,7 @@ class WorldCupTransformer:
             
         return team.title()
 
+    # Normalise les noms de villes (supprime parenthèses, applique mapping)
     def normalize_city(self, city_name):
         """Normalise les noms de villes."""
         if pd.isna(city_name): return None
@@ -99,6 +102,7 @@ class WorldCupTransformer:
             city = self.cities_mapping[city]
         return city.title()
     
+    # Harmonise les phases de tournoi selon nomenclature standard
     def normalize_round(self, round_str):
         """Harmonise les phases de tournoi."""
         if pd.isna(round_str): return None
@@ -109,6 +113,7 @@ class WorldCupTransformer:
             return "Group Stage"
         return round_clean.title()
     
+    # Détermine le résultat d'un match (winner ou draw) à partir des scores
     @staticmethod
     def compute_result(home_goals, away_goals, home_team=None, away_team=None):
         """
@@ -132,6 +137,7 @@ class WorldCupTransformer:
         else:
             return "draw"
     
+    # Parse les dates de formats hétérogènes en datetime unifié
     @staticmethod
     def parse_datetime(datetime_str):
         """Parse les dates hétérogènes."""
@@ -147,46 +153,38 @@ class WorldCupTransformer:
         except Exception:
             return None
     
+    # Transforme les données Source 1 (1930-2010) : parsing scores, normalisation équipes/villes/rounds
     def transform_source1(self, df):
         """
-        Transformation Source 1 (1930-2010) - CORRIGÉE AVEC DEBUG
+        Transformation Source 1 (1930-2010) 
         """
-        logger.info("🔄 Transformation Source 1 (1930-2010)...")
+        logger.info("Transformation Source 1 (1930-2010)...")
         
         if 'year' in df.columns:
-            df = df[df['year'] != 2014]
+            df = df[df['year'] != 2014]  # Élimine les doublons 2014
 
         df_clean = df.copy()
         
-        # 1. Détection Colonnes
+        # 1. Détection Automatique des Colonnes
         team1_cols = [c for c in df_clean.columns if 'team1' in c.lower() or 'home' in c.lower()]
         team2_cols = [c for c in df_clean.columns if 'team2' in c.lower() or 'away' in c.lower()]
         col_t1 = team1_cols[0] if team1_cols else df_clean.columns[3]
         col_t2 = team2_cols[0] if team2_cols else df_clean.columns[4]
         
-        # 2. Normalisation des équipes (Avant calculs)
+        # 2. Normalisation des équipes : "West Germany" → "Germany", "Côte d'Ivoire" → "Cote d'Ivoire"
         df_clean['home_team'] = df_clean[col_t1].apply(self.normalize_team)
         df_clean['away_team'] = df_clean[col_t2].apply(self.normalize_team)
 
-        # 3. Parsing des scores - CORRECTION CRITIQUE
+
+        # 3. Parsing des scores 
         scores = df_clean['score'].apply(self.parse_score)
         
-        # IMPORTANT : On ne remplit PAS avec fillna(0) !
         df_clean['home_result'] = scores.apply(lambda x: x[0] if x[0] is not None else pd.NA)
         df_clean['away_result'] = scores.apply(lambda x: x[1] if x[1] is not None else pd.NA)
         
-        # Conversion en numérique (garde les NA)
+        # Conversion en numérique 
         df_clean['home_result'] = pd.to_numeric(df_clean['home_result'], errors='coerce')
         df_clean['away_result'] = pd.to_numeric(df_clean['away_result'], errors='coerce')
-        
-        # 🔍 DEBUG : Vérifions la finale 1962 APRÈS parsing
-        matches_1962_after = df_clean[df_clean['edition'] == '1962']
-        if len(matches_1962_after) > 0:
-            for idx, row in matches_1962_after.iterrows():
-                if 'final' in str(row['round']).lower():
-                    logger.info(f"🎯 FINALE 1962 APRÈS PARSING :")
-                    logger.info(f"   {row['home_team']} {row['home_result']}-{row['away_result']} {row['away_team']}")
-                    logger.info(f"   Round normalisé : {row['round']}")
 
         # 4. CALCUL RÉSULTAT 
         df_clean['result'] = df_clean.apply(
@@ -218,12 +216,13 @@ class WorldCupTransformer:
      
         return df_clean[['home_team', 'away_team', 'home_result', 'away_result', 'result', 'date', 'round', 'city', 'edition']].copy()
 
+    # Enrichit les matchs avec dates exactes par appariement intelligent multi-matchs
     def enrich_with_historical_dates(self, df_matches, df_dates):
         """
         Solution GÉNÉRALE pour gérer les matchs multiples entre mêmes équipes.
         Logique : Appariement intelligent par ordre chronologique et round.
         """
-        logger.info("📅 Enrichissement dates historiques (solution générale)...")
+        logger.info("Enrichissement dates historiques (solution générale)...")
         
         if df_dates is None or df_dates.empty:
             return df_matches
@@ -272,7 +271,7 @@ class WorldCupTransformer:
                 problematic_pairs.append((team1, team2, year, count))
         """
         if problematic_pairs:
-            logger.info(f"⚠️ {len(problematic_pairs)} paires avec matchs multiples:")
+            logger.info(f"{len(problematic_pairs)} paires avec matchs multiples:")
             for team1, team2, year, count in problematic_pairs[:10]:  # Limiter l'affichage
                 logger.info(f"   {team1} vs {team2} ({year}): {count} matchs")
         """
@@ -325,13 +324,13 @@ class WorldCupTransformer:
             available_dates_info = date_pool.get(norm_key, [])
             
             """if len(available_dates_info) == 0:
-                logger.warning(f"⚠️ Aucune date pour {team1} vs {team2} ({year})")
+                logger.warning(f"Aucune date pour {team1} vs {team2} ({year})")
                 continue
             """
             
             """
             if len(available_dates_info) < match_count:
-                logger.warning(f"⚠️ Manque dates: {team1} vs {team2} ({year}) - {match_count} matchs mais {len(available_dates_info)} dates")
+                logger.warning(f"Manque dates: {team1} vs {team2} ({year}) - {match_count} matchs mais {len(available_dates_info)} dates")
                 # On fait de notre mieux avec les dates disponibles
             """
             # 4.1. ORDONNER LES MATCHS par round et date estimée
@@ -357,12 +356,12 @@ class WorldCupTransformer:
                     assigned_date = dates_to_assign[match_idx]
                     date_assignments[match_idx_row] = assigned_date
                     
-                    logger.info(f"🔍 Appariement {team1} vs {team2} ({year}):")
+                    logger.info(f" Appariement {team1} vs {team2} ({year}):")
                     logger.info(f"   Match {match_idx+1}: {match['round']} -> {assigned_date.date()}")
                 """
                 else:
                     # Plus de dates disponibles, garder la date originale
-                    logger.warning(f"⚠️ Plus de dates pour {team1} vs {team2}, match {match_idx+1} garde date originale")
+                    logger.warning(f"Plus de dates pour {team1} vs {team2}, match {match_idx+1} garde date originale")
                 """
         # 5. APPLIQUER LES ASSIGNATIONS
         updated_count = 0
@@ -410,16 +409,17 @@ class WorldCupTransformer:
                         used_dates_simple[track_key].append(date_val)
                         break
         
-        logger.info(f"✅ {updated_count + simple_updated} dates mises à jour")
+        logger.info(f" {updated_count + simple_updated} dates mises à jour")
         
         # 7. VÉRIFICATION FINALE
         self._verify_date_assignments(df_main, problematic_pairs, date_pool)
         
         return df_main
 
+    # Vérifie la cohérence des assignations de dates pour paires problématiques
     def _verify_date_assignments(self, df, problematic_pairs, date_pool):
         """Vérification finale des assignations."""
-        logger.info("🔍 VÉRIFICATION FINALE des dates...")
+        logger.info(" VÉRIFICATION FINALE des dates...")
         
         issues = []
         
@@ -440,7 +440,7 @@ class WorldCupTransformer:
                 issues.append(f"{team1} vs {team2} ({year}): {len(matches)-len(dates)} doublons de date")
                 
                 # Afficher les détails
-                """  logger.warning(f"⚠️ Problème {team1} vs {team2} ({year}):")
+                """  logger.warning(f"Problème {team1} vs {team2} ({year}):")
                 for idx, row in matches.iterrows():
                     logger.warning(f"   {row['round']}: {row['date'].date() if pd.notna(row['date']) else 'N/A'}")
                 """   
@@ -451,15 +451,16 @@ class WorldCupTransformer:
                     logger.warning(f"   Dates disponibles: {[info['date'].date() for info in available]}")
         """
         if not issues:
-            logger.info("✅ Toutes les dates sont correctement assignées !")
+            logger.info(" Toutes les dates sont correctement assignées !")
         else:
-            logger.warning(f"⚠️ {len(issues)} problèmes détectés")
+            logger.warning(f"{len(issues)} problèmes détectés")
         
         return len(issues) == 0
         """    
         
+    # Transforme les données Source 2 (2014) : extraction colonnes spécifiques, parsing dates    
     def transform_source2(self, df):
-        logger.info("🔄 Transformation Source 2 (2014)...")
+        logger.info("Transformation Source 2 (2014)...")
         df_clean = df.copy()
         df_clean['home_result'] = pd.to_numeric(df_clean.get('Home Team Goals'), errors='coerce').fillna(0).astype(int)
         df_clean['away_result'] = pd.to_numeric(df_clean.get('Away Team Goals'), errors='coerce').fillna(0).astype(int)
@@ -480,8 +481,9 @@ class WorldCupTransformer:
 
         return df_clean[['home_team', 'away_team', 'home_result', 'away_result', 'result', 'date', 'round', 'city', 'edition']].copy()
 
+    # Transforme les données Source 3 (Fifa_world_cup_matches) : mapping colonnes dynamique
     def transform_source3(self, df):
-        logger.info("🔄 Transformation Source 3 (Fifa_world_cup_matches)...")
+        logger.info("Transformation Source 3 (Fifa_world_cup_matches)...")
         df_clean = df.copy()
         col_map = {'home_team': 'team1', 'away_team': 'team2'}
         for col in df_clean.columns:
@@ -517,37 +519,58 @@ class WorldCupTransformer:
             
         return result_df
 
+    # Transforme les données Source 4 (2018 JSON) : extraction groupes + knockout, mapping stades
     def transform_source4(self, json_data):
-        logger.info("🔄 Transformation Source 4 (2018)...")
+        logger.info("Transformation Source 4 (2018)...")
         if not json_data: return pd.DataFrame()
         matches_list = []
+
+        # Extraction des matchs
         for g, d in json_data.get('groups', {}).items():
             for m in d.get('matches', []):
                 m['type'] = 'group'; m['group'] = g; matches_list.append(m)
+
+        # Parcourt les phases finales (round_16, quarter-finals, etc.)
+        # Ajoute chaque match avec marquage "knockout" et nom de phase
         for s, d in json_data.get('knockout', {}).items():
             for m in d.get('matches', []):
                 m['type'] = 'knockout'; m['round_raw'] = s; matches_list.append(m)
         
         final_list = []
         for m in matches_list:
+            # teams_mapping_2018 : {1: "Russia", 2: "Saudi Arabia", ...}
+            # Exemple        : Convertit home_team: 9 → "France"
             home = self.teams_mapping_2018.get(m.get('home_team'), f"Unknown_{m.get('home_team')}")
             away = self.teams_mapping_2018.get(m.get('away_team'), f"Unknown_{m.get('away_team')}")
+
+            # Normalisation des noms
             home_n, away_n = self.normalize_team(home), self.normalize_team(away)
+
+            # Extrait "2018-06-14T18:00:00+03:00" → "2018-06-14"
+            # → Fallback : 1er juillet 2018 si manquant
             d_obj = pd.to_datetime(m.get('date', '').split('T')[0]) if m.get('date') else pd.to_datetime('2018-07-01')
+
+            # Recherche dans json_data['stadiums'] : {id: 1, city: "Moscow", ...}
+            # Trouve la ville correspondant à l'ID du stade
             s_id = m.get('stadium')
             city = next((s['city'] for s in json_data.get('stadiums', []) if s['id'] == s_id), "Unknown")
             
+            # Création du DataFrame final
             final_list.append({
                 'home_team': home_n, 'away_team': away_n,
                 'home_result': m.get('home_result', 0), 'away_result': m.get('away_result', 0),
                 'result': self.compute_result(m.get('home_result', 0), m.get('away_result', 0), home_n, away_n),
-                'date': d_obj, 'round': self.normalize_round(m.get('round_raw', 'Group Stage')) if m['type'] == 'knockout' else 'Group Stage',
+                'date': d_obj, 
+                # Groupes : toujours "Group Stage"
+                # Phase finale : normalise "round_16" → "Round of 16"
+                'round': self.normalize_round(m.get('round_raw', 'Group Stage')) if m['type'] == 'knockout' else 'Group Stage',
                 'city': self.normalize_city(city), 'edition': '2018', 'source': 'json_2018', 'stadium_id': s_id
             })
         return pd.DataFrame(final_list)
 
+    # Corrige les villes manquantes de 2022 via lookup table de référence
     def enrich_2022_with_cities(self, df_2022, df_cities):
-        logger.info("🏙️  Correction des villes 2022...")
+        logger.info("Correction des villes 2022...")
         if df_cities is None or df_cities.empty: return df_2022
         df_main = df_2022.copy()
         city_lookup = {}
@@ -564,50 +587,43 @@ class WorldCupTransformer:
 
         df_main['city'] = df_main.apply(find_city, axis=1)
         return df_main
-
-    def enrich_with_stadiums(self, df_2018, json_data):
-        if 'stadiums' not in json_data: return df_2018
-        stadiums_df = pd.DataFrame(json_data['stadiums']).rename(columns={'id': 'stadium_id', 'name': 'stadium_name'})
-        return pd.merge(df_2018, stadiums_df[['stadium_id', 'stadium_name']], on='stadium_id', how='left') if 'stadium_id' in df_2018.columns else df_2018
-
-    def enrich_with_teams_info(self, df_2018, json_data):
-        return df_2018
-
+   
+   # Fusionne toutes les sources, déduplique, filtre preliminary rounds, sauvegarde dates manquantes
     def consolidate(self, dfs_list):
         """
         Fusionne, DIAGNOSTIQUE et SAUVE les matchs sans date.
         Version corrigée avec gestion d'erreurs robuste.
         """
-        logger.info("🔗 Consolidation des sources...")
+        logger.info("Consolidation des sources...")
         
         # Vérification des inputs
         if dfs_list is None:
-            logger.error("❌ dfs_list est None!")
+            logger.error("dfs_list est None!")
             return None
         
         # Filtrer les DataFrames None ou vides
         valid_dfs = []
         for i, df in enumerate(dfs_list):
             if df is None:
-                logger.warning(f"⚠️ DataFrame {i} est None, ignoré")
+                logger.warning(f"DataFrame {i} est None, ignoré")
             elif df.empty:
-                logger.warning(f"⚠️ DataFrame {i} est vide, ignoré")
+                logger.warning(f"DataFrame {i} est vide, ignoré")
             else:
                 valid_dfs.append(df)
-                logger.info(f"✅ DataFrame {i}: {len(df)} lignes")
+                logger.info(f" DataFrame {i}: {len(df)} lignes")
         
         if len(valid_dfs) == 0:
-            logger.error("❌ Aucun DataFrame valide à consolider!")
+            logger.error("Aucun DataFrame valide à consolider!")
             return None
         
-        logger.info(f"📊 {len(valid_dfs)} DataFrames valides à fusionner")
+        logger.info(f" {len(valid_dfs)} DataFrames valides à fusionner")
         
         # 1. Fusion
         try:
             df_all = pd.concat(valid_dfs, ignore_index=True)
-            logger.info(f"✅ Fusion réussie: {len(df_all)} lignes initiales")
+            logger.info(f" Fusion réussie: {len(df_all)} lignes initiales")
         except Exception as e:
-            logger.error(f"❌ Erreur lors de la fusion: {e}")
+            logger.error(f"Erreur lors de la fusion: {e}")
             import traceback
             logger.error(traceback.format_exc())
             return None
@@ -615,38 +631,38 @@ class WorldCupTransformer:
         # 2. SAUVETAGE DES DATES MANQUANTES
         missing_dates = df_all['date'].isna()
         if missing_dates.sum() > 0:
-            logger.warning(f"⚠️ {missing_dates.sum()} matchs n'ont pas de date ! Tentative de sauvetage...")
+            logger.warning(f"{missing_dates.sum()} matchs n'ont pas de date ! Tentative de sauvetage...")
             try:
                 fallback_dates = pd.to_datetime(df_all.loc[missing_dates, 'edition'] + '-01-01', errors='coerce')
                 df_all.loc[missing_dates, 'date'] = fallback_dates
-                logger.info("✅ Matchs sauvés avec une date par défaut (01/01/AAAA).")
+                logger.info(" Matchs sauvés avec une date par défaut (01/01/AAAA).")
             except Exception as e:
-                logger.error(f"❌ Erreur lors du sauvetage des dates: {e}")
+                logger.error(f"Erreur lors du sauvetage des dates: {e}")
         
         # 3. Nettoyage technique
         before_drop = len(df_all)
         df_all = df_all.dropna(subset=['home_team', 'away_team'])
         if len(df_all) < before_drop:
-            logger.warning(f"🗑️ {before_drop - len(df_all)} matchs supprimés car équipes inconnues.")
+            logger.warning(f"{before_drop - len(df_all)} matchs supprimés car équipes inconnues.")
         
         # 4. FILTRAGE : "BLACKLIST" (Prelim)
         try:
             mask_exclude = df_all['round'].astype(str).str.contains('preliminary', case=False, na=False)
             a_exclure = df_all[mask_exclude]
             if len(a_exclure) > 0:
-                logger.info(f"🗑️ {len(a_exclure)} matchs à exclure (contenant 'preliminary')")
+                logger.info(f"{len(a_exclure)} matchs à exclure (contenant 'preliminary')")
             df_all = df_all[~mask_exclude]
         except Exception as e:
-            logger.error(f"❌ Erreur lors du filtrage 'preliminary': {e}")
+            logger.error(f"Erreur lors du filtrage 'preliminary': {e}")
         
         # 5. Dédoublonnage et Tri
         try:
             before_dedup = len(df_all)
             df_all = df_all.drop_duplicates(subset=['home_team', 'away_team', 'date', 'round'], keep='first')
             if len(df_all) < before_dedup:
-                logger.info(f"🔍 {before_dedup - len(df_all)} doublons supprimés")
+                logger.info(f" {before_dedup - len(df_all)} doublons supprimés")
         except Exception as e:
-            logger.error(f"❌ Erreur lors du dédoublonnage: {e}")
+            logger.error(f"Erreur lors du dédoublonnage: {e}")
         
         # Conversion date et tri
         try:
@@ -654,7 +670,7 @@ class WorldCupTransformer:
             df_all = df_all.sort_values('date').reset_index(drop=True)
             df_all['id_match'] = range(1, len(df_all) + 1)
         except Exception as e:
-            logger.error(f"❌ Erreur lors du tri/numérotation: {e}")
+            logger.error(f"Erreur lors du tri/numérotation: {e}")
         
         # Colonnes finales
         cols = ['id_match', 'home_team', 'away_team', 'home_result', 'away_result', 
@@ -663,25 +679,26 @@ class WorldCupTransformer:
         # Vérifier que toutes les colonnes existent
         missing_cols = set(cols) - set(df_all.columns)
         if missing_cols:
-            logger.error(f"❌ Colonnes manquantes: {missing_cols}")
+            logger.error(f"Colonnes manquantes: {missing_cols}")
             # Afficher les colonnes disponibles pour debug
             logger.info(f"   Colonnes disponibles: {df_all.columns.tolist()}")
             return None
         
         try:
             final_df = df_all[cols].copy()
-            logger.info(f"✅ Consolidation terminée : {len(final_df)} matchs.")
+            logger.info(f" Consolidation terminée : {len(final_df)} matchs.")
             logger.info(f"   Colonnes finales: {final_df.columns.tolist()}")
             return final_df
         except Exception as e:
-            logger.error(f"❌ Erreur lors de la création du DataFrame final: {e}")
+            logger.error(f"Erreur lors de la création du DataFrame final: {e}")
             import traceback
             logger.error(traceback.format_exc())
             return None
-                
+
+    # Valide la qualité des données : complétude et logique des scores   
     def validate(self, df):
         """Vérifie la qualité des données (complétude des colonnes et logique des scores)."""
-        logger.info("✔️  Validation des données...")
+        logger.info(" Validation des données...")
         issues = []
         
         # Liste des colonnes obligatoires (correspondant à ta nouvelle table simplifiée)
@@ -707,6 +724,8 @@ class WorldCupTransformer:
         
 
         return True
+
+    # Affiche statistiques globales (total matchs, nuls)
     def analyze_results(self, df):
         draws = df[df['result'] == 'draw']
-        logger.info(f"📊 Analyse: {len(df)} matchs, {len(draws)} nuls.")
+        logger.info(f" Analyse: {len(df)} matchs, {len(draws)} nuls.")

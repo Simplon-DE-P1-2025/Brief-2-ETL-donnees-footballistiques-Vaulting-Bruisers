@@ -22,7 +22,6 @@ def setup_logging():
 # =====================================================================
 
 TEAMS_MAPPING = {
-    # --- Normalisation Historique & Géopolitique ---
     # Fusion RFA/RDA -> Allemagne
     "West Germany": "Germany",
     "FR Germany": "Germany",
@@ -31,8 +30,8 @@ TEAMS_MAPPING = {
     "FRG": "Germany",  
     "Frg": "Germany", 
     "Gdr": "Germany",
-    
-    # URSS -> Russie (successeur légal FIFA)
+
+    # URSS -> Russie 
     "Soviet Union": "Russia",
     "USSR": "Russia",
 
@@ -54,14 +53,12 @@ TEAMS_MAPPING = {
     
     "Bosnia-Herzegovina": "Bosnia and Herzegovina",
     
-    # Crucial pour la jointure 2022 (IR Iran vs Iran)
     "Iran": "Iran",
     "IR Iran": "Iran",
     
     "Irish Republic": "Republic of Ireland",
     "Northern Ireland": "Northern Ireland",
     
-    # --- Normalisation de Casse ---
     "FRANCE": "France",
     "BRAZIL": "Brazil",
     "ARGENTINA": "Argentina",
