@@ -30,7 +30,8 @@ TEAMS_MAPPING = {
     "Germany FR": "Germany",
     "FRG": "Germany",  
     "Frg": "Germany", 
-
+    "Gdr": "Germany",
+    
     # URSS -> Russie (successeur légal FIFA)
     "Soviet Union": "Russia",
     "USSR": "Russia",
@@ -150,6 +151,8 @@ ROUNDS_MAPPING = {
     "Final": "Final",
     "Finale": "Final",
     "FINAL": "Final",
+    "_FINAL": "Final", 
+    "_Final": "Final",
 }
 
 # --- Mapping ID spécifique JSON 2018 ---

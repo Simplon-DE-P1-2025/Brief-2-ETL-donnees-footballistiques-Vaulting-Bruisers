@@ -60,21 +60,26 @@ def run_etl_pipeline():
         # 1. Correction des villes 2022 via jointure externe
         if cities_22 is not None:
             df_c3 = transformer.enrich_2022_with_cities(df_c3, cities_22)
-        
-        # 2. Ajout des métadonnées (Stades/Équipes) pour 2018
-        if not df_c4.empty:
-            df_c4 = transformer.enrich_with_stadiums(df_c4, json4)
-            df_c4 = transformer.enrich_with_teams_info(df_c4, json4)
+    
             
         # Fusion des datasets et génération de l'ID unique
         df_final = transformer.consolidate([df_c1, df_c2, df_c3, df_c4])
         
+        
+        # DEBUG CRITIQUE
+        if df_final is None:
+            logger.error("❌ ERREUR CRITIQUE: consolidate() a retourné None!")
+            logger.error("   Arrêt du pipeline car pas de données à charger.")
+            # Vous pouvez soit arrêter ici, soit continuer avec un DataFrame vide
+            df_final = pd.DataFrame()  # Créer un DataFrame vide pour éviter l'erreur suivante
+        else:
+            logger.info(f"✅ consolidate() a retourné {len(df_final)} lignes")
+
         # Audit Qualité des Données (Data Quality)
         transformer.analyze_results(df_final)
         
         if not transformer.validate(df_final):
             logger.warning("⚠️ Problèmes de validation détectés (pipeline continue)")
-            
         # =====================================================================
         # PHASE 3 : CHARGEMENT (Load)
         # Persistance des données nettoyées dans le Data Warehouse (SQLite)
@@ -87,7 +92,6 @@ def run_etl_pipeline():
         
         # Insertion des données (DML)
         loader.load_data(df_final)             # Table de faits (Matchs)
-        loader.load_additional_data(json4)     # Tables de dimensions (Stades, etc.)
         
         # Vérification finale post-chargement
         loader.verify_load()
