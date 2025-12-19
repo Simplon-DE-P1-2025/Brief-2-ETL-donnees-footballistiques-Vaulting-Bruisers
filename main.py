@@ -33,7 +33,7 @@ def run_etl_pipeline():
         extractor = WorldCupExtractor(data_dir="data/raw")
         
         # Chargement des datasets bruts en mémoire (DataFrames)
-        df1 = extractor.extract_source1("matches_1930-2010.csv")
+        df1 = extractor.extract_source1("matches_19302010.csv")
         df2 = extractor.extract_source2("WorldCupMatches2014.csv")
         df3 = extractor.extract_source3("Fifa_world_cup_matches.csv")
         json4 = extractor.extract_source4("data_2018.json")
@@ -44,7 +44,7 @@ def run_etl_pipeline():
         
         # =====================================================================
         # PHASE 2 : TRANSFORMATION
-        # Nettoyage, Normalisation, Enrichissement et Consolidation
+        # Nettoyage, Normalisation, Enrichissement et Consolidationthi
         # =====================================================================
         transformer = WorldCupTransformer()
         

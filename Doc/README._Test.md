@@ -13,10 +13,10 @@ Charger les données dans une base relationnelle SQLite
 Documenter et structurer le projet de manière claire
 
 ## Données traitées
-- 1930 – 2010 : CSV (formats et encodages hétérogènes)
-- 2014 : CSV enrichi (dates, stades)
-- 2018 : JSON imbriqué (groupes, phases finales, stades)
-- 2022 : CSV incomplet, enrichi via sources additionnelles
+1930 – 2010 : CSV (formats et encodages hétérogènes)
+2014 : CSV enrichi (dates, stades)
+2018 : JSON imbriqué (groupes, phases finales, stades)
+2022 : CSV incomplet, enrichi via sources additionnelles
 
 Volume total : ~7 700 matchs.
 
@@ -24,14 +24,13 @@ Volume total : ~7 700 matchs.
 Les données finales sont stockées dans une table unique world_cup_matches, avec une ligne par match de Coupe du Monde, toutes éditions confondues.
 
 ## Champs principaux :
-- équipes (home / away)
-- scores
-- date
-- tour de compétition
-- ville
-- édition
-- métadonnées (stade, codes FIFA, source…)
-
+équipes (home / away)
+scores
+date
+tour de compétition
+ville
+édition
+métadonnées (stade, codes FIFA, source…)
 Ce choix garantit un schéma simple, homogène et facilement exploitable qui répond aux attentes de rendu pour le brief.
 
 ## Choix techniques
@@ -45,18 +44,45 @@ Architecture claire Extract → Transform → Load
 Le résultat est un fichier worldcup.db prêt pour l’analyse.
 
 ## Structure du projet
-```bash
+.
 ├── main.py
 ├── extract.py        # WorldCupExtractor
 ├── transform.py      # WorldCupTransformer
 ├── load.py           # WorldCupLoader
+├── run_tests.py      # Script d'exécution des tests
 ├── data/
 │   ├── raw/          # fichiers sources (non versionnés)
-│   └── processed/    # fichiers intermédiaires
+│   ├── processed/    # fichiers intermédiaires
+│   └── Tests/        # Tests unitaires et d'intégration
+│       ├── test_extract.py
+│       ├── test_transform.py
+│       ├── test_load.py
+│       └── test_integration.py
 └── README.md
-```
+
 
 Les sources de données ne sont pas versionnées volontairement.
+
+## Tests
+Le projet inclut une suite complète de tests pour assurer la qualité et la fiabilité du pipeline ETL.
+
+### Exécution des tests
+```bash
+# Installation des dépendances de test
+pip install -r requirements.txt
+
+# Exécution de tous les tests
+python run_tests.py
+
+# Ou directement avec pytest
+pytest data/Tests/ -v --cov=extract --cov=transform --cov=load
+```
+
+### Couverture des tests
+- **test_extract.py** : Tests unitaires pour le module d'extraction
+- **test_transform.py** : Tests unitaires pour le module de transformation
+- **test_load.py** : Tests unitaires pour le module de chargement
+- **test_integration.py** : Tests d'intégration pour le pipeline complet
 
 ## Améliorations possibles
 Gestion des versions via branches et pull requests
@@ -65,7 +91,7 @@ Ajout de nouvelles éditions (ex. 2026)
 Enrichissements statistiques supplémentaires
 
 ## Équipe
-- Dahani Fernando
-- Matthieu Navarro
-- David Brimeux
-- Mathieu Barbé-Gayet
+Dahani Fernando
+Matthieu Navarro
+David Brimeux
+Mathieu Barbé-Gayet

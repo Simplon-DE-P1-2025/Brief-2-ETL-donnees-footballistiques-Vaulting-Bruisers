@@ -18,7 +18,7 @@ class WorldCupExtractor:
         self.data_dir = Path(data_dir)
     
     # Charge le CSV historique 1930-2010 avec gestion d'erreurs
-    def extract_source1(self, filename="matches_1930-2010.csv"):
+    def extract_source1(self, filename="matches_19302010.csv"):
         """
         Ingestion du dataset historique (1930-2010).
         Format attendu : CSV standard.
