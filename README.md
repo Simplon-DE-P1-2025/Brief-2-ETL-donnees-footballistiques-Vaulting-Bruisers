@@ -45,7 +45,6 @@ Architecture claire Extract → Transform → Load
 Le résultat est un fichier worldcup.db prêt pour l’analyse.
 
 ## Structure du projet
-## Structure du projet
 ```bash
 .
 ├── main.py
