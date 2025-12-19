@@ -220,3 +220,69 @@ class TestWorldCupExtractor:
         df = extractor.extract_source3("Fifa_world_cup_matches_semicolon.csv")
         assert isinstance(df, pd.DataFrame)
         assert len(df) == 1
+
+    def test_extract_source2_encoding_fallback_complete(self, temp_data_dir, monkeypatch):
+        """Test complet du fallback encodage dans extract_source2 avec mock."""
+        extractor = WorldCupExtractor(data_dir=temp_data_dir)
+
+        # Mock pd.read_csv pour lever UnicodeDecodeError sur UTF-8-sig
+        call_count = [0]
+        def mock_read_csv(filepath, sep, encoding):
+            call_count[0] += 1
+            if encoding == 'utf-8-sig' and call_count[0] == 1:
+                raise UnicodeDecodeError('utf-8', b'', 0, 1, 'invalid')
+            # Succès avec latin-1
+            return pd.DataFrame({
+                'Home Team Name': ['Brazil'],
+                'Away Team Name': ['France'],
+                'Home Team Goals': [2],
+                'Away Team Goals': [1],
+                'City': ['Rio'],
+                'Stage': ['Group A'],
+                'Year': [2014],
+                'Datetime': ['14 Jun 2014 - 13:00']
+            })
+
+        monkeypatch.setattr('pandas.read_csv', mock_read_csv)
+        df = extractor.extract_source2("dummy.csv")
+        assert isinstance(df, pd.DataFrame)
+        assert len(df) == 1
+        assert call_count[0] == 2  # Deux appels : UTF-8-sig puis latin-1
+
+    def test_extract_source3_separator_fallback_complete(self, temp_data_dir, monkeypatch):
+        """Test complet du fallback séparateur dans extract_source3 avec mock."""
+        extractor = WorldCupExtractor(data_dir=temp_data_dir)
+
+        call_count = [0]
+        def mock_read_csv(filepath, sep=None, encoding=None):
+            call_count[0] += 1
+            if sep is None and call_count[0] == 1:  # Premier appel sans sep
+                raise Exception("Invalid separator")
+            # Succès avec sep=';'
+            return pd.DataFrame({
+                'team1': ['Qatar'],
+                'team2': ['Ecuador'],
+                'number of goals team1': [0],
+                'number of goals team2': [2],
+                'city': ['Doha'],
+                'round': ['Group A'],
+                'year': [2022],
+                'date': ['20 Nov']
+            })
+
+        monkeypatch.setattr('pandas.read_csv', mock_read_csv)
+        df = extractor.extract_source3("dummy.csv")
+        assert isinstance(df, pd.DataFrame)
+        assert len(df) == 1
+        assert call_count[0] == 2  # Deux appels : virgule puis point-virgule
+
+    def test_extract_historical_dates_corrupted_file(self, temp_data_dir):
+        """Test extraction dates historiques avec fichier corrompu."""
+        # Créer un fichier TXT corrompu
+        corrupted_path = temp_data_dir / "corrupted_dates.txt"
+        with open(corrupted_path, 'w', encoding='utf-8') as f:
+            f.write("invalid;content;here\nmore;invalid;data\n")
+
+        extractor = WorldCupExtractor(data_dir=temp_data_dir)
+        result = extractor.extract_historical_dates("corrupted_dates.txt")
+        assert result is None  # Devrait retourner None en cas d'erreur

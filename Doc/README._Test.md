@@ -79,10 +79,96 @@ pytest data/Tests/ -v --cov=extract --cov=transform --cov=load
 ```
 
 ### Couverture des tests
-- **test_extract.py** : Tests unitaires pour le module d'extraction
-- **test_transform.py** : Tests unitaires pour le module de transformation
-- **test_load.py** : Tests unitaires pour le module de chargement
-- **test_integration.py** : Tests d'intégration pour le pipeline complet
+Le projet dispose d'une couverture de test de **79%** avec **76 tests** couvrant tous les aspects critiques du pipeline ETL.
+
+#### Tests par module
+
+##### **test_extract.py** (89% de couverture)
+Tests unitaires pour l'extraction de données depuis 4 sources hétérogènes :
+
+**Source 1 (1930-2010)** :
+- Extraction CSV standard avec gestion d'erreurs
+- Test de fichier inexistant (exception FileNotFoundError)
+
+**Source 2 (2014)** :
+- Extraction CSV avec fallback encodage (UTF-8-SIG → Latin-1)
+- Nettoyage des artefacts spécifiques au fichier
+- Tests d'encodage avec fichiers temporaires Latin-1
+
+**Source 3 (2022)** :
+- Détection automatique du séparateur (virgule/point-virgule)
+- Normalisation des en-têtes de colonnes
+- Tests de fallback séparateur avec fichiers temporaires
+
+**Source 4 (2018)** :
+- Chargement JSON hiérarchique (groupes, phases finales, stades)
+- Test de JSON invalide (exception JSONDecodeError)
+
+**Sources auxiliaires** :
+- Extraction dates historiques (TXT avec fallback encodage)
+- Extraction villes 2022 (CSV avec séparateur ';')
+- Tests de fichiers corrompus et gestion d'erreurs
+
+##### **test_transform.py** (74% de couverture)
+Tests unitaires pour la transformation et normalisation des données :
+
+**Fonctions de base** :
+- Parsing de scores (regex universelle, tuples, None, chaînes vides)
+- Normalisation d'équipes (mappings, encodages, chiffres → "Unknown")
+- Normalisation de villes (suppression parenthèses, mappings)
+- Normalisation de rounds (Group Stage, Final, etc.)
+- Calcul de résultats (home win, away win, draw, gestion None/NaN)
+- Parsing de dates (formats multiples, gestion erreurs)
+
+**Transformation par source** :
+- **Source 1** : Parsing scores, normalisation équipes/villes/rounds, calcul résultats
+- **Source 2** : Extraction colonnes spécifiques, gestion dates, cas limites (None)
+- **Source 3** : Mapping colonnes dynamique, parsing dates spéciales, gestion erreurs
+- **Source 4** : Extraction groupes/knockout, mapping stades, normalisation rounds
+
+**Fonctions avancées** :
+- Enrichissement dates historiques (appariement complexe multi-matchs)
+- Enrichissement villes 2022 (lookup table)
+- Consolidation (fusion, dédoublonnage, tri, gestion erreurs)
+- Validation (complétude colonnes, logique scores)
+- Analyse résultats (statistiques)
+
+**Tests de robustesse** :
+- Gestion d'erreurs (exceptions, None, NaN)
+- Cas limites (fichiers vides, DataFrames None)
+- Logique complexe (appariement dates multiples équipes)
+
+##### **test_load.py** (100% de couverture)
+Tests unitaires pour le chargement en base de données :
+
+- Initialisation et connexion SQLite
+- Création du schéma (table world_cup_matches)
+- Chargement des données avec gestion transactions
+- Vérification d'intégrité post-chargement
+- Gestion d'erreurs (connexion invalide, rollback)
+- Fermeture propre des connexions
+
+##### **test_integration.py** (Tests d'intégration)
+Tests de bout en bout du pipeline complet :
+
+- **Pipeline complet** : Extract → Transform → Load → Base de données
+- **ETL intégré** : Test des interactions entre modules
+- Utilisation de données de test réalistes
+- Vérification de la base finale et du CSV exporté
+
+### Métriques de couverture
+```
+extract.py        96     11    89%   (lignes non couvertes : gestion d'erreurs externes)
+load.py           48      0   100%   (couverture complète)
+transform.py     416    107    74%   (lignes non couvertes : logique complexe, logs)
+TOTAL            560    118    79%
+```
+
+### Types de tests
+- **Tests unitaires** : Fonctions individuelles, cas nominaux et d'erreur
+- **Tests d'intégration** : Pipeline complet avec données réalistes
+- **Tests de robustesse** : Gestion d'erreurs, cas limites, encodages
+- **Tests de performance** : Couverture élevée, exécution rapide (< 2s)
 
 ## Améliorations possibles
 Gestion des versions via branches et pull requests

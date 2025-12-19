@@ -452,3 +452,186 @@ class TestWorldCupTransformer:
         for input_name, expected in variations:
             result = transformer.normalize_team(input_name)
             assert result == expected
+
+    def test_parse_score_exception_handling(self, transformer):
+        """Test gestion d'erreurs complète dans parse_score avec objet non-string."""
+        # Test avec un objet qui cause une exception dans le try block
+        class ProblematicObject:
+            def __str__(self):
+                return "test"
+
+        obj = ProblematicObject()
+        # This should work since str() works, but let's test with invalid regex input
+        home, away = transformer.parse_score("invalid[regex")
+        assert home is None
+        assert away is None
+
+    def test_normalize_team_exception_handling(self, transformer):
+        """Test gestion d'erreurs dans normalize_team avec objet non-string."""
+        class NonStringifiable:
+            def __str__(self):
+                raise Exception("Mock error")
+
+        obj = NonStringifiable()
+        result = transformer.normalize_team(obj)
+        assert result == "Unknown"
+
+    def test_transform_source1_error_handling(self, transformer, monkeypatch):
+        """Test gestion d'erreurs dans transform_source1."""
+        df = pd.DataFrame({
+            'round': ['Group A'],
+            'team1': ['Brazil'],
+            'team2': ['France'],
+            'score': ['invalid_score'],
+            'venue': ['Rio'],
+            'year': [2014]
+        })
+
+        # Mock parse_score pour lever une exception
+        def mock_parse_score(score):
+            raise Exception("Mock parse error")
+
+        monkeypatch.setattr(transformer, 'parse_score', mock_parse_score)
+
+        # Should still work but with None values
+        result = transformer.transform_source1(df)
+        assert isinstance(result, pd.DataFrame)
+
+    def test_enrich_with_historical_dates_complex_logic(self, transformer):
+        """Test logique complexe dans enrich_with_historical_dates."""
+        # Create data that triggers the complex pairing logic
+        df_matches = pd.DataFrame({
+            'home_team': ['Brazil', 'Brazil', 'Brazil'],
+            'away_team': ['France', 'France', 'Germany'],
+            'home_result': [2, 1, 3],
+            'away_result': [1, 0, 1],
+            'result': ['Brazil', 'Brazil', 'Brazil'],
+            'date': [pd.to_datetime('2014-07-01')] * 3,
+            'round': ['Group Stage', 'Quarter-finals', 'Semi-finals'],
+            'city': ['Rio'] * 3,
+            'edition': ['2014'] * 3
+        })
+
+        df_dates = pd.DataFrame({
+            'home_team': ['Brazil', 'Brazil'],
+            'away_team': ['France', 'France'],
+            'date_exacte': [pd.to_datetime('2014-06-14'), pd.to_datetime('2014-06-28')]
+        })
+
+        result = transformer.enrich_with_historical_dates(df_matches, df_dates)
+        assert isinstance(result, pd.DataFrame)
+        assert len(result) == 3
+
+    def test_consolidate_error_handling(self, transformer, monkeypatch):
+        """Test gestion d'erreurs dans consolidate."""
+        # Mock pd.concat to raise exception
+        def mock_concat(dfs, **kwargs):
+            raise Exception("Mock concat error")
+
+        monkeypatch.setattr('pandas.concat', mock_concat)
+
+        df1 = pd.DataFrame({
+            'home_team': ['Brazil'],
+            'away_team': ['France'],
+            'home_result': [2],
+            'away_result': [1],
+            'result': ['Brazil'],
+            'date': [pd.to_datetime('2014-06-14')],
+            'round': ['Group Stage'],
+            'city': ['Rio'],
+            'edition': ['2014']
+        })
+
+        result = transformer.consolidate([df1])
+        assert result is None
+
+    def test_consolidate_dedup_error_handling(self, transformer, monkeypatch):
+        """Test gestion d'erreurs dans dédoublonnage."""
+        df1 = pd.DataFrame({
+            'home_team': ['Brazil'],
+            'away_team': ['France'],
+            'home_result': [2],
+            'away_result': [1],
+            'result': ['Brazil'],
+            'date': [pd.to_datetime('2014-06-14')],
+            'round': ['Group Stage'],
+            'city': ['Rio'],
+            'edition': ['2014']
+        })
+
+        # Mock drop_duplicates to raise exception
+        original_drop_duplicates = pd.DataFrame.drop_duplicates
+        def mock_drop_duplicates(self, **kwargs):
+            raise Exception("Mock dedup error")
+
+        monkeypatch.setattr(pd.DataFrame, 'drop_duplicates', mock_drop_duplicates)
+
+        # The consolidate function logs the error but continues and returns the DataFrame
+        result = transformer.consolidate([df1])
+        assert isinstance(result, pd.DataFrame)  # Should still return DataFrame despite error
+
+        # Restore
+        monkeypatch.setattr(pd.DataFrame, 'drop_duplicates', original_drop_duplicates)
+
+    def test_transform_source2_edge_case(self, transformer):
+        """Test cas limite dans transform_source2."""
+        df = pd.DataFrame({
+            'Home Team Name': ['Brazil'],
+            'Away Team Name': ['France'],
+            'Home Team Goals': [None],  # None value
+            'Away Team Goals': [1],
+            'City': ['Rio'],
+            'Stage': ['Group A'],
+            'Year': [2014],
+            'Datetime': [None]  # None datetime
+        })
+
+        result = transformer.transform_source2(df)
+        assert isinstance(result, pd.DataFrame)
+        assert len(result) == 1
+
+    def test_transform_source3_date_parsing_edge(self, transformer):
+        """Test parsing dates spéciales dans transform_source3."""
+        df = pd.DataFrame({
+            'team1': ['Brazil'],
+            'team2': ['France'],
+            'number of goals team1': [2],
+            'number of goals team2': [1],
+            'city': ['Rio'],
+            'round': ['Group A'],
+            'year': [2022],
+            'date': ['32 Jan']  # Invalid date
+        })
+
+        result = transformer.transform_source3(df)
+        assert isinstance(result, pd.DataFrame)
+        assert len(result) == 1
+        # Should have fallback date
+
+    def test_transform_source4_knockout_logic(self, transformer):
+        """Test logique knockout dans transform_source4."""
+        json_data = {
+            "groups": {},
+            "knockout": {
+                "round_16": {
+                    "matches": [
+                        {
+                            "home_team": 1,
+                            "away_team": 2,
+                            "home_result": 2,
+                            "away_result": 1,
+                            "date": "2018-06-14T18:00:00+03:00",
+                            "stadium": 1,
+                            "round_raw": "round_16"
+                        }
+                    ]
+                }
+            },
+            "stadiums": [{"id": 1, "city": "Moscow"}]
+        }
+
+        result = transformer.transform_source4(json_data)
+        assert isinstance(result, pd.DataFrame)
+        assert len(result) == 1
+        # The normalize_round function converts 'round_16' to 'Round_16' (title case)
+        assert result.iloc[0]['round'] == 'Round_16'

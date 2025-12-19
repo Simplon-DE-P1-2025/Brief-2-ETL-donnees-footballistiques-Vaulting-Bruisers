@@ -145,10 +145,6 @@ class WorldCupExtractor:
         except Exception as e:
             logger.warning(f" Impossible de charger {filename}: {e}")
             return None
-            
-        except Exception as e:
-            logger.warning(f" Impossible de charger {filename}: {e}")
-            return None
 
     # Charge le CSV mapping villes 2022 pour correction données manquantes
     def extract_cities_2022(self, filename="cities_2022.csv"):

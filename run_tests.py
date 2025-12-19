@@ -16,7 +16,7 @@ def run_tests():
     # Commande pytest
     cmd = [
         sys.executable, "-m", "pytest",
-        "data/Tests/",  # Répertoire des tests
+        "Tests/",  # Répertoire des tests
         "-v",  # Verbose
         "--tb=short",  # Format d'erreur court
         "--cov=extract",  # Coverage pour extract.py
