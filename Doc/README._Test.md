@@ -44,6 +44,7 @@ Architecture claire Extract → Transform → Load
 Le résultat est un fichier worldcup.db prêt pour l’analyse.
 
 ## Structure du projet
+```bash
 .
 ├── main.py
 ├── extract.py        # WorldCupExtractor
@@ -60,7 +61,7 @@ Le résultat est un fichier worldcup.db prêt pour l’analyse.
 │       └── test_integration.py
 └── README.md
 
-
+```
 Les sources de données ne sont pas versionnées volontairement.
 
 ## Tests

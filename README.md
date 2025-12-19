@@ -45,15 +45,24 @@ Architecture claire Extract → Transform → Load
 Le résultat est un fichier worldcup.db prêt pour l’analyse.
 
 ## Structure du projet
+## Structure du projet
 ```bash
+.
 ├── main.py
 ├── extract.py        # WorldCupExtractor
 ├── transform.py      # WorldCupTransformer
 ├── load.py           # WorldCupLoader
+├── run_tests.py      # Script d'exécution des tests
 ├── data/
 │   ├── raw/          # fichiers sources (non versionnés)
-│   └── processed/    # fichiers intermédiaires
+│   ├── processed/    # fichiers intermédiaires
+│   └── Tests/        # Tests unitaires et d'intégration
+│       ├── test_extract.py
+│       ├── test_transform.py
+│       ├── test_load.py
+│       └── test_integration.py
 └── README.md
+
 ```
 
 Les sources de données ne sont pas versionnées volontairement.
